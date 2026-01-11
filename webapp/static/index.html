@@ -12,9 +12,6 @@
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <style>
         * {
             margin: 0;
@@ -254,7 +251,6 @@
             color: #94a3b8;
         }
         
-        /* Auth Modal */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -297,23 +293,6 @@
         .modal .btn-primary {
             width: 100%;
             margin-top: 0.5rem;
-        }
-        
-        .auth-switch {
-            text-align: center;
-            margin-top: 1rem;
-            color: #94a3b8;
-            font-size: 0.875rem;
-        }
-        
-        .auth-switch a {
-            color: #22c55e;
-            cursor: pointer;
-            text-decoration: none;
-        }
-        
-        .auth-switch a:hover {
-            text-decoration: underline;
         }
         
         /* Progress Overlay */
@@ -405,34 +384,6 @@
     </style>
 </head>
 <body>
-    <!-- Auth Modal (hidden by default for dev mode) -->
-    <div id="authModal" class="modal-overlay hidden">
-        <div class="modal">
-            <div class="logo-icon" style="margin: 0 auto 1rem;">🗺️</div>
-            <h2 class="modal-title">Welcome Back</h2>
-            <p class="modal-subtitle" id="authSubtitle">Sign in to generate terrain maps</p>
-            
-            <form id="authForm">
-                <div class="form-group">
-                    <label class="form-label">Email</label>
-                    <input type="email" id="authEmail" class="form-input" placeholder="you@example.com" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Password</label>
-                    <input type="password" id="authPassword" class="form-input" placeholder="••••••••" required>
-                </div>
-                <button type="submit" class="btn btn-primary" id="authSubmit">Sign In</button>
-            </form>
-            
-            <div class="auth-switch">
-                <span id="authSwitchText">Don't have an account?</span>
-                <a id="authSwitchLink" onclick="toggleAuthMode()">Sign Up</a>
-            </div>
-            
-            <div id="authError" class="error-message hidden"></div>
-        </div>
-    </div>
-    
     <!-- Settings Modal -->
     <div id="settingsModal" class="modal-overlay hidden">
         <div class="modal">
@@ -456,7 +407,7 @@
             </form>
             
             <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #334155;">
-                <p style="color: #64748b; font-size: 0.75rem;">Your API key is stored securely in your account and used only for map generation.</p>
+                <p style="color: #64748b; font-size: 0.75rem;">Your API key is stored locally in this browser and used only for map generation.</p>
             </div>
         </div>
     </div>
@@ -478,9 +429,7 @@
                 <span class="logo-text">OpenFront Map Generator</span>
             </div>
             <div class="user-section">
-                <span class="user-email" id="userEmail"></span>
                 <button class="btn btn-secondary" onclick="showSettings()" title="Settings">⚙️ Settings</button>
-                <button class="btn btn-outline" onclick="signOut()">Sign Out</button>
             </div>
         </header>
         
@@ -559,64 +508,28 @@
     <script>
         // Configuration
         const CONFIG = {
-            API_URL: window.location.origin,
-            SUPABASE_URL: 'https://qvsvmalowainwanvrkhn.supabase.co',
-            SUPABASE_ANON_KEY: 'sb_publishable_Lqwf_Ak7fpdBPF4_lJu4iA_7JC68zZU'
+            API_URL: window.location.origin
         };
         
         // State
-        let supabaseClient = null;
-        let currentUser = null;
         let userApiKey = null;
         let map = null;
         let drawnItems = null;
         let currentBounds = null;
-        let isSignUp = false;
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            initSupabase();
             initMap();
+            showApp();
             
             // Add listener to map name input to validate
             document.getElementById('mapName').addEventListener('input', updateGenerateButton);
         });
         
-        // Supabase Auth
-        function initSupabase() {
-            // Check if Supabase is configured
-            if (!CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL === '' || CONFIG.SUPABASE_URL.includes('your-project')) {
-                // Development mode - skip auth
-                console.log('Supabase not configured - running in dev mode');
-                showApp({ email: 'dev@localhost' });
-                return;
-            }
-            
-            supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-            
-            // Check existing session
-            supabaseClient.auth.getSession().then(({ data: { session } }) => {
-                if (session) {
-                    currentUser = session.user;
-                    showApp(session.user);
-                } else {
-                    showAuth();
-                }
-            });
-        }
-        
-        function showAuth() {
-            document.getElementById('authModal').classList.remove('hidden');
-            document.getElementById('app').classList.add('hidden');
-        }
-        
-        function showApp(user) {
-            document.getElementById('authModal').classList.add('hidden');
+        function showApp() {
             document.getElementById('app').classList.remove('hidden');
-            document.getElementById('userEmail').textContent = user.email;
-            currentUser = user;
             
-            // Load user's API key from profile
+            // Load API key from local storage
             loadUserApiKey();
             
             // Reinitialize map if needed
@@ -626,26 +539,8 @@
         }
         
         // Settings / API Key Management
-        async function loadUserApiKey() {
-            if (!supabaseClient || !currentUser) {
-                // Dev mode - use local storage
-                userApiKey = localStorage.getItem('dev_api_key') || '';
-                return;
-            }
-            
-            try {
-                const { data, error } = await supabaseClient
-                    .from('profiles')
-                    .select('api_key')
-                    .eq('id', currentUser.id)
-                    .single();
-                
-                if (!error && data) {
-                    userApiKey = data.api_key || '';
-                }
-            } catch (err) {
-                console.error('Failed to load API key:', err);
-            }
+        function loadUserApiKey() {
+            userApiKey = localStorage.getItem('openfront_api_key') || '';
         }
         
         function showSettings() {
@@ -658,35 +553,15 @@
             document.getElementById('settingsModal').classList.add('hidden');
         }
         
-        document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+        document.getElementById('settingsForm').addEventListener('submit', (e) => {
             e.preventDefault();
             
             const apiKey = document.getElementById('apiKeyInput').value.trim();
-            const statusEl = document.getElementById('settingsStatus');
             
-            if (!supabaseClient || !currentUser) {
-                // Dev mode - save to local storage
-                localStorage.setItem('dev_api_key', apiKey);
-                userApiKey = apiKey;
-                showSettingsStatus('API key saved locally!', 'success');
-                setTimeout(closeSettings, 1500);
-                return;
-            }
-            
-            try {
-                const { error } = await supabaseClient
-                    .from('profiles')
-                    .update({ api_key: apiKey, updated_at: new Date().toISOString() })
-                    .eq('id', currentUser.id);
-                
-                if (error) throw error;
-                
-                userApiKey = apiKey;
-                showSettingsStatus('API key saved successfully!', 'success');
-                setTimeout(closeSettings, 1500);
-            } catch (err) {
-                showSettingsStatus('Failed to save: ' + err.message, 'error');
-            }
+            localStorage.setItem('openfront_api_key', apiKey);
+            userApiKey = apiKey;
+            showSettingsStatus('API key saved locally!', 'success');
+            setTimeout(closeSettings, 1500);
         });
         
         function showSettingsStatus(message, type) {
@@ -699,77 +574,6 @@
             statusEl.style.borderColor = type === 'success' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
             statusEl.style.color = type === 'success' ? '#4ade80' : '#fca5a5';
             statusEl.classList.remove('hidden');
-        }
-        
-        function toggleAuthMode() {
-            isSignUp = !isSignUp;
-            
-            if (isSignUp) {
-                document.getElementById('authSubmit').textContent = 'Sign Up';
-                document.getElementById('authSwitchText').textContent = 'Already have an account?';
-                document.getElementById('authSwitchLink').textContent = 'Sign In';
-                document.getElementById('authSubtitle').textContent = 'Create an account to get started';
-            } else {
-                document.getElementById('authSubmit').textContent = 'Sign In';
-                document.getElementById('authSwitchText').textContent = "Don't have an account?";
-                document.getElementById('authSwitchLink').textContent = 'Sign Up';
-                document.getElementById('authSubtitle').textContent = 'Sign in to generate terrain maps';
-            }
-            
-            document.getElementById('authError').classList.add('hidden');
-        }
-        
-        // Auth form submission
-        document.getElementById('authForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const email = document.getElementById('authEmail').value;
-            const password = document.getElementById('authPassword').value;
-            const errorEl = document.getElementById('authError');
-            
-            errorEl.classList.add('hidden');
-            
-            // Dev mode
-            if (!supabaseClient) {
-                showApp({ email });
-                return;
-            }
-            
-            try {
-                let result;
-                if (isSignUp) {
-                    result = await supabaseClient.auth.signUp({ email, password });
-                } else {
-                    result = await supabaseClient.auth.signInWithPassword({ email, password });
-                }
-                
-                if (result.error) {
-                    errorEl.textContent = result.error.message;
-                    errorEl.classList.remove('hidden');
-                    return;
-                }
-                
-                if (isSignUp) {
-                    errorEl.textContent = 'Check your email to confirm your account!';
-                    errorEl.style.borderColor = 'rgba(34, 197, 94, 0.3)';
-                    errorEl.style.background = 'rgba(34, 197, 94, 0.1)';
-                    errorEl.style.color = '#4ade80';
-                    errorEl.classList.remove('hidden');
-                } else {
-                    showApp(result.data.user);
-                }
-            } catch (err) {
-                errorEl.textContent = err.message;
-                errorEl.classList.remove('hidden');
-            }
-        });
-        
-        async function signOut() {
-            if (supabaseClient) {
-                await supabaseClient.auth.signOut();
-            }
-            currentUser = null;
-            showAuth();
         }
         
         // Map initialization
@@ -943,23 +747,13 @@
             showProgress('Generating map...', 'This may take 30-60 seconds');
             
             try {
-                // Get auth token
-                let token = 'dev-token';
-                if (supabaseClient) {
-                    const { data: { session } } = await supabaseClient.auth.getSession();
-                    if (session) {
-                        token = session.access_token;
-                    }
-                }
-
                 // Calculate resolution for this request
                 const resolution = calculateResolution(currentBounds);
 
                 const response = await fetch(`${CONFIG.API_URL}/api/generate`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         name: name,
